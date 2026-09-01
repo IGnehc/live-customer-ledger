@@ -1,7 +1,7 @@
 {
-  "name": "直播客户账本",
+  "name": "直播客户账本 V5",
   "short_name": "直播账本",
-  "description": "用于记录直播间客户消费、付款、买取抵扣和欠款",
+  "description": "支持人民币、单位计价、客户独立账单与 Firebase 多设备云同步",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

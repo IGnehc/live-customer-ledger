@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="直播账本">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>直播客户账本 V2</title>
+<title>直播客户账本 V5 云同步版</title>
 <style>
 :root{--bg:#f4f6fa;--card:#fff;--text:#172033;--muted:#70798b;--line:#e7eaf0;--blue:#2563eb;--red:#dc2626;--green:#16a34a;--orange:#d97706}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
@@ -33,13 +33,28 @@ th,td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left;vertic
 .bigName{font-size:25px;font-weight:800}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:14px}.sum{background:#f8fafc;border:1px solid var(--line);padding:12px;border-radius:11px}.sum small{color:var(--muted)}.sum strong{display:block;font-size:19px;margin-top:4px}
 .empty{color:var(--muted);padding:14px;text-align:center}
 @media(max-width:850px){.layout{grid-template-columns:1fr}.stats,.summary{grid-template-columns:1fr 1fr}.app{padding:10px}}
-@media(max-width:500px){h1{font-size:21px}.stat strong{font-size:19px}.two{grid-template-columns:1fr}.toolbar input,.toolbar select,.toolbar button{width:100%}}
+.cloudbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cloudstate{font-size:12px;padding:5px 9px;border-radius:999px;background:#f3f4f6;color:#4b5563}
+.cloudstate.online{background:#dcfce7;color:#166534}.cloudstate.warn{background:#fef3c7;color:#92400e}
+.modal{position:fixed;inset:0;background:rgba(15,23,42,.46);display:none;align-items:center;justify-content:center;padding:16px;z-index:9999}
+.modal.show{display:flex}.modalbox{width:min(520px,100%);max-height:92vh;overflow:auto;background:white;border-radius:16px;padding:18px;box-shadow:0 20px 50px rgba(0,0,0,.2)}
+.modalbox h2{font-size:20px}.modalActions{display:flex;gap:8px;margin-top:14px}.modalActions .btn{flex:1}
+.cloudHelp{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:12px;color:#596174;line-height:1.6;margin-top:10px}
+@media(max-width:500px){h1{font-size:21px}.stat strong{font-size:19px}.two{grid-template-columns:1fr}.toolbar input,.toolbar select,.toolbar button{width:100%}.top{align-items:flex-start;flex-direction:column}.cloudbar{width:100%}.cloudbar .btn{flex:1}}
 </style>
 </head>
 <body>
 <div class="app">
 <div id="mainPage">
- <div class="top"><div><h1>📒 直播客户账本</h1><div class="hint">中国客户 · 人民币记账 · 数据保存在本机浏览器 · <b style="color:#2563eb">V4 单位计价版</b></div></div></div>
+ <div class="top">
+   <div><h1>📒 直播客户账本</h1><div class="hint">中国客户 · 人民币记账 · 本地保存 + 云端同步 · <b style="color:#2563eb">V5 云同步版</b></div></div>
+   <div class="cloudbar">
+     <span class="cloudstate warn" id="cloudState">☁️ 未连接云端</span>
+     <button class="btn soft" id="cloudLoginBtn" onclick="openCloudModal()">云同步 / 登录</button>
+     <button class="btn soft" id="cloudSyncBtn" onclick="manualCloudSync()" style="display:none">立即同步</button>
+     <button class="btn danger" id="cloudLogoutBtn" onclick="cloudLogout()" style="display:none">退出</button>
+   </div>
+ </div>
  <div class="stats">
   <div class="stat"><small>累计消费</small><strong id="sTotal">¥0.00</strong></div>
   <div class="stat"><small>当前未收</small><strong class="red" id="sDue">¥0.00</strong></div>
@@ -76,16 +91,56 @@ th,td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left;vertic
  </div>
 </div>
 </div>
+
+<div class="modal" id="cloudModal">
+ <div class="modalbox">
+   <h2>☁️ 云同步设置</h2>
+   <div class="hint">第一次使用，需要先连接你自己的 Firebase 项目；配置只保存在这台设备，不会写入 GitHub 仓库。</div>
+
+   <label>Firebase apiKey</label>
+   <input id="fbApiKey" placeholder="AIza...">
+   <label>Firebase authDomain</label>
+   <input id="fbAuthDomain" placeholder="你的项目.firebaseapp.com">
+   <label>Firebase projectId</label>
+   <input id="fbProjectId" placeholder="项目 ID">
+   <label>Firebase appId</label>
+   <input id="fbAppId" placeholder="1:xxxxxxxx:web:xxxxxxxx">
+
+   <div class="cloudHelp">
+     Firebase 控制台需要开启：<b>Authentication → Email/Password</b>，以及 <b>Firestore Database</b>。<br>
+     Firestore 建议规则：只允许已登录用户访问自己的 <code>users/{uid}/bills</code> 数据。
+   </div>
+
+   <hr style="border:0;border-top:1px solid #e7eaf0;margin:16px 0">
+   <h2 style="font-size:17px">账号</h2>
+   <label>邮箱</label><input type="email" id="cloudEmail" placeholder="你的邮箱">
+   <label>密码</label><input type="password" id="cloudPassword" placeholder="至少 6 位密码">
+   <div class="modalActions">
+      <button class="btn soft" onclick="closeCloudModal()">取消</button>
+      <button class="btn soft" onclick="cloudRegister()">注册</button>
+      <button class="btn primary" onclick="cloudLogin()">登录并同步</button>
+   </div>
+   <div class="hint" id="cloudMessage" style="margin-top:10px"></div>
+ </div>
+</div>
+
 <script>
 const KEY='live_customer_bills_v2_cny';
 let bills=JSON.parse(localStorage.getItem(KEY)||'[]'), activeCustomer='';
+const DELETED_KEY='live_customer_bills_deleted_v5';
+let deletedBillIds=JSON.parse(localStorage.getItem(DELETED_KEY)||'[]');
+bills=bills.map(b=>({...b,updatedAt:Number(b.updatedAt||Date.now())}));
 const $=id=>document.getElementById(id);
 $('date').value=new Date().toISOString().slice(0,10);
 const money=n=>'¥'+Number(n||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const due=b=>Math.max(0,Number(b.total||0)-Number(b.paid||0)-Number(b.buyback||0));
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function js(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
-function save(){localStorage.setItem(KEY,JSON.stringify(bills));renderMain();if(activeCustomer)renderCustomer()}
+function save(){
+  localStorage.setItem(KEY,JSON.stringify(bills));
+  renderMain();if(activeCustomer)renderCustomer();
+  if(window.cloudReady && window.cloudPushAll) window.cloudPushAll(bills,deletedBillIds).catch(()=>{});
+}
 function calcTotal(qty,unit,price,priceMode){
   qty=Number(qty||0);price=Number(price||0);
   if(priceMode==='pack' && unit==='手') return qty*24*price;
@@ -102,21 +157,29 @@ function addBill(){
  if(!$('date').value)return alert('请选择日期');
  if(qty<=0)return alert('请输入数量');
  let unit=$('unit').value,priceMode=$('priceMode').value,total=calcTotal(qty,unit,price,priceMode);
- bills.unshift({id:Date.now(),date:$('date').value,customer,series:$('series').value,type:$('type').value,qty,unit,priceMode,price,total,paid:0,buyback:0,note:$('note').value.trim()});
+ let now=Date.now(); bills.unshift({id:now,date:$('date').value,customer,series:$('series').value,type:$('type').value,qty,unit,priceMode,price,total,paid:0,buyback:0,note:$('note').value.trim(),updatedAt:now});
  $('qty').value='';$('price').value='';$('note').value='';preview();save();
 }
 function status(b){let d=due(b);return d<=0?'paid':((Number(b.paid||0)+Number(b.buyback||0))>0?'partial':'unpaid')}
 function statusText(s){return s==='paid'?'已付款':s==='partial'?'部分付款':'未付款'}
-function removeBill(id){if(confirm('确定删除这条记录吗？')){bills=bills.filter(b=>b.id!==id);save()}}
+function removeBill(id){
+  if(confirm('确定删除这条记录吗？')){
+    if(!deletedBillIds.includes(String(id))) deletedBillIds.push(String(id));
+    localStorage.setItem(DELETED_KEY,JSON.stringify(deletedBillIds));
+    bills=bills.filter(b=>b.id!==id);
+    if(window.cloudDeleteOne) window.cloudDeleteOne(String(id)).catch(()=>{});
+    save();
+  }
+}
 function payBill(id){
  let b=bills.find(x=>x.id===id),d=due(b);if(!b)return;
  let v=prompt('本条账单还需付款 '+money(d)+'\n请输入本次收到的人民币金额：',d.toFixed(2));if(v===null)return;v=Number(v);
- if(isNaN(v)||v<0)return alert('金额不正确');b.paid=Number(b.paid||0)+v;save();
+ if(isNaN(v)||v<0)return alert('金额不正确');b.paid=Number(b.paid||0)+v;b.updatedAt=Date.now();save();
 }
 function buyBill(id){
  let b=bills.find(x=>x.id===id);if(!b)return;
  let v=prompt('请输入这条账单的买取抵扣金额（人民币）：',Number(b.buyback||0).toFixed(2));if(v===null)return;v=Number(v);
- if(isNaN(v)||v<0)return alert('金额不正确');b.buyback=v;save();
+ if(isNaN(v)||v<0)return alert('金额不正确');b.buyback=v;b.updatedAt=Date.now();save();
 }
 function renderMain(){
  let q=$('search').value.trim().toLowerCase(),f=$('filter').value;
@@ -139,27 +202,48 @@ function renderCustomer(){
 function customerPayment(){
  let bs=customerBills(),d=bs.reduce((a,b)=>a+due(b),0);if(d<=0)return alert('这个客户目前没有欠款');
  let v=prompt(activeCustomer+' 当前欠款 '+money(d)+'\n请输入本次转账金额：',d.toFixed(2));if(v===null)return;v=Number(v);if(isNaN(v)||v<=0)return alert('金额不正确');
- for(let b of bs.slice().reverse()){let r=due(b);if(r<=0)continue;let use=Math.min(v,r);b.paid=Number(b.paid||0)+use;v-=use;if(v<=0)break}save();
+ for(let b of bs.slice().reverse()){let r=due(b);if(r<=0)continue;let use=Math.min(v,r);b.paid=Number(b.paid||0)+use;b.updatedAt=Date.now();v-=use;if(v<=0)break}save();
 }
 function customerBuyback(){
  let bs=customerBills(),d=bs.reduce((a,b)=>a+due(b),0);if(d<=0)return alert('这个客户目前没有欠款');
  let v=prompt(activeCustomer+' 当前欠款 '+money(d)+'\n请输入本次买取店抵扣金额：');if(v===null)return;v=Number(v);if(isNaN(v)||v<=0)return alert('金额不正确');
- for(let b of bs.slice().reverse()){let r=due(b);if(r<=0)continue;let use=Math.min(v,r);b.buyback=Number(b.buyback||0)+use;v-=use;if(v<=0)break}save();
+ for(let b of bs.slice().reverse()){let r=due(b);if(r<=0)continue;let use=Math.min(v,r);b.buyback=Number(b.buyback||0)+use;b.updatedAt=Date.now();v-=use;if(v<=0)break}save();
 }
 function settleCustomer(){
  let bs=customerBills(),d=bs.reduce((a,b)=>a+due(b),0);if(d<=0)return alert('已经结清');
  if(!confirm(`确认已收到 ${activeCustomer} 的全部欠款 ${money(d)} 吗？`))return;
- bs.forEach(b=>{let r=due(b);if(r>0)b.paid=Number(b.paid||0)+r});save();
+ bs.forEach(b=>{let r=due(b);if(r>0){b.paid=Number(b.paid||0)+r;b.updatedAt=Date.now()}});save();
 }
 function download(content,name,type){let blob=new Blob([content],{type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
 function exportCSV(){let h=['日期','客户','系列','种类','数量','单位','计价方式','单价(CNY)','消费金额','已付款','买取抵扣','剩余欠款','状态','备注'];let r=bills.map(b=>[b.date,b.customer,b.series,b.type,b.qty,b.unit||'个',b.priceMode==='pack'?'按每包计价':'按当前单位计价',b.price,b.total,b.paid||0,b.buyback||0,due(b),statusText(status(b)),b.note||'']);let csv=[h,...r].map(x=>x.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');download('\ufeff'+csv,'直播客户账单_CNY.csv','text/csv;charset=utf-8')}
 function backup(){download(JSON.stringify(bills,null,2),'直播客户账本_V2_备份.json','application/json')}
+
+window.getLedgerBills=()=>bills;
+window.getDeletedBillIds=()=>deletedBillIds;
+window.replaceLedgerBills=(arr)=>{
+  bills=(arr||[]).map(b=>({...b,updatedAt:Number(b.updatedAt||Date.now())}));
+  localStorage.setItem(KEY,JSON.stringify(bills));
+  renderMain();if(activeCustomer)renderCustomer();
+};
+window.clearDeletedBillIds=(ids)=>{
+  const done=new Set((ids||[]).map(String));
+  deletedBillIds=deletedBillIds.filter(id=>!done.has(String(id)));
+  localStorage.setItem(DELETED_KEY,JSON.stringify(deletedBillIds));
+};
+function openCloudModal(){ $('cloudModal').classList.add('show'); if(window.loadCloudForm)window.loadCloudForm(); }
+function closeCloudModal(){ $('cloudModal').classList.remove('show'); }
+function cloudLogin(){ if(window.firebaseCloudLogin) window.firebaseCloudLogin(); else alert('云同步模块正在加载，请稍后再试'); }
+function cloudRegister(){ if(window.firebaseCloudRegister) window.firebaseCloudRegister(); else alert('云同步模块正在加载，请稍后再试'); }
+function cloudLogout(){ if(window.firebaseCloudLogout) window.firebaseCloudLogout(); }
+function manualCloudSync(){ if(window.firebaseManualSync) window.firebaseManualSync(); }
+
 renderMain();
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./service-worker.js?v=4').then(reg=>reg.update()).catch(()=>{});
+    navigator.serviceWorker.register('./service-worker.js?v=5').then(reg=>reg.update()).catch(()=>{});
   });
 }
 </script>
+<script type="module" src="./cloud-sync.js?v=5"></script>
 </body>
 </html>

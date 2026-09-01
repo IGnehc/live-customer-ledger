@@ -1,0 +1,46 @@
+直播客户账本 V5 云同步版
+
+【这版已经加入】
+- 本地保存：没网时也不会因为云端暂时不可用而无法查看本机数据
+- Firebase 邮箱/密码登录
+- 手机、电脑登录同一个账号后同步同一份账单
+- 新增、收款、买取抵扣、删除都会同步
+- 第一次登录会把本机旧账单与云端账单合并
+- 保留 V4 的“包 / 手(24包) / 盒 / 个”单位计价功能
+
+【第一次使用云同步】
+1. 打开 https://console.firebase.google.com/ 新建一个 Firebase 项目
+2. 添加 Web App
+3. 复制 Firebase 配置中的：
+   apiKey
+   authDomain
+   projectId
+   appId
+4. Firebase → Authentication → Sign-in method → 开启 Email/Password
+5. Firebase → Firestore Database → Create database
+6. 在软件右上角点“云同步 / 登录”
+7. 填入上面的 4 个 Firebase 配置
+8. 输入邮箱、密码，第一次点“注册”；以后点“登录并同步”
+9. 手机和电脑都登录同一个账号即可同步
+
+【Firestore 安全规则（推荐）】
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
+
+【上传 GitHub Pages】
+把 ZIP 解压后，将所有文件覆盖上传到仓库根目录：
+- index.html
+- cloud-sync.js
+- manifest.webmanifest
+- service-worker.js
+- icon-192.png
+- icon-512.png
+
+重要：
+Firebase 的 apiKey 等配置由你在软件里填写，保存在浏览器本机 localStorage，不会写入这个 GitHub 文件包。
