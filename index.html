@@ -39,7 +39,7 @@ th,td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left;vertic
 <body>
 <div class="app">
 <div id="mainPage">
- <div class="top"><div><h1>📒 直播客户账本</h1><div class="hint">中国客户 · 人民币记账 · 数据保存在本机浏览器</div></div></div>
+ <div class="top"><div><h1>📒 直播客户账本</h1><div class="hint">中国客户 · 人民币记账 · 数据保存在本机浏览器 · <b style="color:#2563eb">V4 单位计价版</b></div></div></div>
  <div class="stats">
   <div class="stat"><small>累计消费</small><strong id="sTotal">¥0.00</strong></div>
   <div class="stat"><small>当前未收</small><strong class="red" id="sDue">¥0.00</strong></div>
@@ -52,8 +52,8 @@ th,td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left;vertic
    <label>客户名称 / 直播ID</label><input id="customer" list="names" placeholder="输入客户名"><datalist id="names"></datalist>
    <div class="two"><div><label>日期</label><input type="date" id="date"></div><div><label>系列</label><select id="series"><option>高达</option><option>OP17</option><option>OP16</option><option>OP15</option><option>OP14</option><option>OP13</option><option>EB04</option><option>EB03</option><option>其他</option></select></div></div>
    <div class="two"><div><label>种类</label><select id="type"><option>盒</option><option>散包</option><option>原膜</option><option>垃圾袋</option><option>切口</option><option>其他</option></select></div><div><label>数量</label><input type="number" id="qty" min="0" step="1" placeholder="例如 24"></div></div>
-   <div class="two"><div><label>数量单位</label><select id="unit"><option value="包">包</option><option value="手">手（1手=24包）</option><option value="盒">盒</option><option value="个">个</option></select></div><div><label>计价方式</label><select id="priceMode"><option value="unit">按当前单位计价</option><option value="pack">按每包计价</option></select></div></div>
-   <div class="two"><div><label>单价（人民币）</label><input type="number" id="price" min="0" step="0.01" placeholder="例如 30"></div><div><label>金额</label><input id="preview" disabled value="¥0.00"></div></div>
+   <div class="two"><div><label>单位</label><select id="unit"><option value="包">包（1包）</option><option value="手">手（24包）</option><option value="盒">盒（1盒）</option><option value="个">个（1个）</option></select></div><div><label>计价方式</label><select id="priceMode"><option value="unit">按当前单位计价</option><option value="pack">按每包计价</option></select></div></div>
+   <div class="hint" style="margin:6px 0 2px">例：1手 × 720元/手，或 1手 × 24包 × 30元/包</div><div class="two"><div><label>单价（人民币）</label><input type="number" id="price" min="0" step="0.01" placeholder="例如 30"></div><div><label>金额</label><input id="preview" disabled value="¥0.00"></div></div>
    <label>备注</label><textarea id="note" placeholder="例如：等直播结束统一付款"></textarea>
    <button class="btn primary full" onclick="addBill()">＋ 添加到客户账单</button>
    <div class="customers"><h2>客户账单</h2><div id="customerList"></div></div>
@@ -157,7 +157,7 @@ function backup(){download(JSON.stringify(bills,null,2),'直播客户账本_V2_�
 renderMain();
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
+    navigator.serviceWorker.register('./service-worker.js?v=4').then(reg=>reg.update()).catch(()=>{});
   });
 }
 </script>
