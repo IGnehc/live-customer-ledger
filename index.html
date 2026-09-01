@@ -52,6 +52,7 @@ th,td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left;vertic
    <label>客户名称 / 直播ID</label><input id="customer" list="names" placeholder="输入客户名"><datalist id="names"></datalist>
    <div class="two"><div><label>日期</label><input type="date" id="date"></div><div><label>系列</label><select id="series"><option>高达</option><option>OP17</option><option>OP16</option><option>OP15</option><option>OP14</option><option>OP13</option><option>EB04</option><option>EB03</option><option>其他</option></select></div></div>
    <div class="two"><div><label>种类</label><select id="type"><option>盒</option><option>散包</option><option>原膜</option><option>垃圾袋</option><option>切口</option><option>其他</option></select></div><div><label>数量</label><input type="number" id="qty" min="0" step="1" placeholder="例如 24"></div></div>
+   <div class="two"><div><label>数量单位</label><select id="unit"><option value="包">包</option><option value="手">手（1手=24包）</option><option value="盒">盒</option><option value="个">个</option></select></div><div><label>计价方式</label><select id="priceMode"><option value="unit">按当前单位计价</option><option value="pack">按每包计价</option></select></div></div>
    <div class="two"><div><label>单价（人民币）</label><input type="number" id="price" min="0" step="0.01" placeholder="例如 30"></div><div><label>金额</label><input id="preview" disabled value="¥0.00"></div></div>
    <label>备注</label><textarea id="note" placeholder="例如：等直播结束统一付款"></textarea>
    <button class="btn primary full" onclick="addBill()">＋ 添加到客户账单</button>
@@ -85,15 +86,23 @@ const due=b=>Math.max(0,Number(b.total||0)-Number(b.paid||0)-Number(b.buyback||0
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function js(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
 function save(){localStorage.setItem(KEY,JSON.stringify(bills));renderMain();if(activeCustomer)renderCustomer()}
-function preview(){ $('preview').value=money(Number($('qty').value||0)*Number($('price').value||0)) }
-$('qty').oninput=preview;$('price').oninput=preview;
+function calcTotal(qty,unit,price,priceMode){
+  qty=Number(qty||0);price=Number(price||0);
+  if(priceMode==='pack' && unit==='手') return qty*24*price;
+  return qty*price;
+}
+function preview(){
+  $('preview').value=money(calcTotal($('qty').value,$('unit').value,$('price').value,$('priceMode').value));
+}
+$('qty').oninput=preview;$('price').oninput=preview;$('unit').onchange=preview;$('priceMode').onchange=preview;
 
 function addBill(){
  let customer=$('customer').value.trim(),qty=Number($('qty').value||0),price=Number($('price').value||0);
  if(!customer)return alert('请输入客户名称');
  if(!$('date').value)return alert('请选择日期');
  if(qty<=0)return alert('请输入数量');
- bills.unshift({id:Date.now(),date:$('date').value,customer,series:$('series').value,type:$('type').value,qty,price,total:qty*price,paid:0,buyback:0,note:$('note').value.trim()});
+ let unit=$('unit').value,priceMode=$('priceMode').value,total=calcTotal(qty,unit,price,priceMode);
+ bills.unshift({id:Date.now(),date:$('date').value,customer,series:$('series').value,type:$('type').value,qty,unit,priceMode,price,total,paid:0,buyback:0,note:$('note').value.trim()});
  $('qty').value='';$('price').value='';$('note').value='';preview();save();
 }
 function status(b){let d=due(b);return d<=0?'paid':((Number(b.paid||0)+Number(b.buyback||0))>0?'partial':'unpaid')}
@@ -112,7 +121,7 @@ function buyBill(id){
 function renderMain(){
  let q=$('search').value.trim().toLowerCase(),f=$('filter').value;
  let rows=bills.filter(b=>(!q||b.customer.toLowerCase().includes(q))&&(!f||status(b)===f));
- $('tbody').innerHTML=rows.length?rows.map(b=>`<tr><td>${b.date}</td><td><b style="cursor:pointer;color:#2563eb" onclick="openCustomer('${js(b.customer)}')">${esc(b.customer)}</b></td><td>${esc(b.series)} ${esc(b.type)} × ${b.qty}</td><td>${money(b.total)}</td><td>${money(b.paid)}</td><td>${money(b.buyback)}</td><td class="${due(b)>0?'red':'green'}"><b>${money(due(b))}</b></td><td><span class="badge ${status(b)}">${statusText(status(b))}</span></td><td>${due(b)>0?`<button class="mini ok" onclick="payBill(${b.id})">收款</button>`:''}<button class="mini soft" onclick="buyBill(${b.id})">买取</button><button class="mini danger" onclick="removeBill(${b.id})">删除</button></td></tr>`).join(''):`<tr><td colspan="9" class="empty">暂无记录</td></tr>`;
+ $('tbody').innerHTML=rows.length?rows.map(b=>`<tr><td>${b.date}</td><td><b style="cursor:pointer;color:#2563eb" onclick="openCustomer('${js(b.customer)}')">${esc(b.customer)}</b></td><td>${esc(b.series)} ${esc(b.type)} × ${b.qty}${esc(b.unit||'个')}</td><td>${money(b.total)}</td><td>${money(b.paid)}</td><td>${money(b.buyback)}</td><td class="${due(b)>0?'red':'green'}"><b>${money(due(b))}</b></td><td><span class="badge ${status(b)}">${statusText(status(b))}</span></td><td>${due(b)>0?`<button class="mini ok" onclick="payBill(${b.id})">收款</button>`:''}<button class="mini soft" onclick="buyBill(${b.id})">买取</button><button class="mini danger" onclick="removeBill(${b.id})">删除</button></td></tr>`).join(''):`<tr><td colspan="9" class="empty">暂无记录</td></tr>`;
  let map={},total=0,paid=0;
  bills.forEach(b=>{total+=Number(b.total);paid+=Number(b.paid||0)+Number(b.buyback||0);if(!map[b.customer])map[b.customer]={due:0,total:0};map[b.customer].due+=due(b);map[b.customer].total+=Number(b.total)});
  $('sTotal').textContent=money(total);$('sDue').textContent=money(bills.reduce((a,b)=>a+due(b),0));$('sPaid').textContent=money(paid);$('sCustomers').textContent=Object.keys(map).length;
@@ -125,7 +134,7 @@ function customerBills(){return bills.filter(b=>b.customer===activeCustomer)}
 function renderCustomer(){
  let bs=customerBills(),total=bs.reduce((a,b)=>a+Number(b.total),0),paid=bs.reduce((a,b)=>a+Number(b.paid||0),0),buy=bs.reduce((a,b)=>a+Number(b.buyback||0),0),d=bs.reduce((a,b)=>a+due(b),0);
  $('cpName').textContent=activeCustomer;$('cpTotal').textContent=money(total);$('cpPaid').textContent=money(paid);$('cpBuy').textContent=money(buy);$('cpDue').textContent=money(d);
- $('cpBody').innerHTML=bs.length?bs.map(b=>`<tr><td>${b.date}</td><td>${esc(b.series)} ${esc(b.type)}</td><td>${b.qty}</td><td>${money(b.price)}</td><td>${money(b.total)}</td><td>${money(b.paid)}</td><td>${money(b.buyback)}</td><td class="${due(b)>0?'red':'green'}"><b>${money(due(b))}</b></td><td>${esc(b.note||'')}</td><td>${due(b)>0?`<button class="mini ok" onclick="payBill(${b.id})">收款</button>`:''}<button class="mini soft" onclick="buyBill(${b.id})">买取</button><button class="mini danger" onclick="removeBill(${b.id})">删除</button></td></tr>`).join(''):'<tr><td colspan="10" class="empty">暂无记录</td></tr>';
+ $('cpBody').innerHTML=bs.length?bs.map(b=>`<tr><td>${b.date}</td><td>${esc(b.series)} ${esc(b.type)}</td><td>${b.qty}${esc(b.unit||'个')}</td><td>${money(b.price)}${b.priceMode==='pack'&&b.unit==='手'?'/包':'/'+esc(b.unit||'个')}</td><td>${money(b.total)}</td><td>${money(b.paid)}</td><td>${money(b.buyback)}</td><td class="${due(b)>0?'red':'green'}"><b>${money(due(b))}</b></td><td>${esc(b.note||'')}</td><td>${due(b)>0?`<button class="mini ok" onclick="payBill(${b.id})">收款</button>`:''}<button class="mini soft" onclick="buyBill(${b.id})">买取</button><button class="mini danger" onclick="removeBill(${b.id})">删除</button></td></tr>`).join(''):'<tr><td colspan="10" class="empty">暂无记录</td></tr>';
 }
 function customerPayment(){
  let bs=customerBills(),d=bs.reduce((a,b)=>a+due(b),0);if(d<=0)return alert('这个客户目前没有欠款');
@@ -143,7 +152,7 @@ function settleCustomer(){
  bs.forEach(b=>{let r=due(b);if(r>0)b.paid=Number(b.paid||0)+r});save();
 }
 function download(content,name,type){let blob=new Blob([content],{type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
-function exportCSV(){let h=['日期','客户','系列','种类','数量','单价(CNY)','消费金额','已付款','买取抵扣','剩余欠款','状态','备注'];let r=bills.map(b=>[b.date,b.customer,b.series,b.type,b.qty,b.price,b.total,b.paid||0,b.buyback||0,due(b),statusText(status(b)),b.note||'']);let csv=[h,...r].map(x=>x.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');download('\ufeff'+csv,'直播客户账单_CNY.csv','text/csv;charset=utf-8')}
+function exportCSV(){let h=['日期','客户','系列','种类','数量','单位','计价方式','单价(CNY)','消费金额','已付款','买取抵扣','剩余欠款','状态','备注'];let r=bills.map(b=>[b.date,b.customer,b.series,b.type,b.qty,b.unit||'个',b.priceMode==='pack'?'按每包计价':'按当前单位计价',b.price,b.total,b.paid||0,b.buyback||0,due(b),statusText(status(b)),b.note||'']);let csv=[h,...r].map(x=>x.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');download('\ufeff'+csv,'直播客户账单_CNY.csv','text/csv;charset=utf-8')}
 function backup(){download(JSON.stringify(bills,null,2),'直播客户账本_V2_备份.json','application/json')}
 renderMain();
 if ('serviceWorker' in navigator) {
