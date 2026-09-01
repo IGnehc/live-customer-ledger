@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="直播账本">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>直播客户账本 V5 云同步版</title>
+<title>直播客户账本 V6 免配置登录版</title>
 <style>
 :root{--bg:#f4f6fa;--card:#fff;--text:#172033;--muted:#70798b;--line:#e7eaf0;--blue:#2563eb;--red:#dc2626;--green:#16a34a;--orange:#d97706}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
@@ -47,7 +47,7 @@ th,td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left;vertic
 <div class="app">
 <div id="mainPage">
  <div class="top">
-   <div><h1>📒 直播客户账本</h1><div class="hint">中国客户 · 人民币记账 · 本地保存 + 云端同步 · <b style="color:#2563eb">V5 云同步版</b></div></div>
+   <div><h1>📒 直播客户账本</h1><div class="hint">中国客户 · 人民币记账 · 本地保存 + 云端同步 · <b style="color:#2563eb">V6 免配置登录版</b></div></div>
    <div class="cloudbar">
      <span class="cloudstate warn" id="cloudState">☁️ 未连接云端</span>
      <button class="btn soft" id="cloudLoginBtn" onclick="openCloudModal()">云同步 / 登录</button>
@@ -95,20 +95,11 @@ th,td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left;vertic
 <div class="modal" id="cloudModal">
  <div class="modalbox">
    <h2>☁️ 云同步设置</h2>
-   <div class="hint">第一次使用，需要先连接你自己的 Firebase 项目；配置只保存在这台设备，不会写入 GitHub 仓库。</div>
-
-   <label>Firebase apiKey</label>
-   <input id="fbApiKey" placeholder="AIza...">
-   <label>Firebase authDomain</label>
-   <input id="fbAuthDomain" placeholder="你的项目.firebaseapp.com">
-   <label>Firebase projectId</label>
-   <input id="fbProjectId" placeholder="项目 ID">
-   <label>Firebase appId</label>
-   <input id="fbAppId" placeholder="1:xxxxxxxx:web:xxxxxxxx">
+   <div class="hint">Firebase 已经配置完成。手机和电脑只需要登录同一个账号，即可同步同一份账单。</div>
 
    <div class="cloudHelp">
-     Firebase 控制台需要开启：<b>Authentication → Email/Password</b>，以及 <b>Firestore Database</b>。<br>
-     Firestore 建议规则：只允许已登录用户访问自己的 <code>users/{uid}/bills</code> 数据。
+     Firebase 已内置连接到 <b>live-customer-ledger</b>。<br>
+     手机、电脑或新设备只需要输入同一个邮箱和密码即可同步，不需要再填写 Firebase 参数。
    </div>
 
    <hr style="border:0;border-top:1px solid #e7eaf0;margin:16px 0">
@@ -230,7 +221,7 @@ window.clearDeletedBillIds=(ids)=>{
   deletedBillIds=deletedBillIds.filter(id=>!done.has(String(id)));
   localStorage.setItem(DELETED_KEY,JSON.stringify(deletedBillIds));
 };
-function openCloudModal(){ $('cloudModal').classList.add('show'); if(window.loadCloudForm)window.loadCloudForm(); }
+function openCloudModal(){ $('cloudModal').classList.add('show'); }
 function closeCloudModal(){ $('cloudModal').classList.remove('show'); }
 function cloudLogin(){ if(window.firebaseCloudLogin) window.firebaseCloudLogin(); else alert('云同步模块正在加载，请稍后再试'); }
 function cloudRegister(){ if(window.firebaseCloudRegister) window.firebaseCloudRegister(); else alert('云同步模块正在加载，请稍后再试'); }
@@ -240,10 +231,10 @@ function manualCloudSync(){ if(window.firebaseManualSync) window.firebaseManualS
 renderMain();
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./service-worker.js?v=5').then(reg=>reg.update()).catch(()=>{});
+    navigator.serviceWorker.register('./service-worker.js?v=6').then(reg=>reg.update()).catch(()=>{});
   });
 }
 </script>
-<script type="module" src="./cloud-sync.js?v=5"></script>
+<script type="module" src="./cloud-sync.js?v=6"></script>
 </body>
 </html>

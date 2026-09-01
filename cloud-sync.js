@@ -9,7 +9,12 @@ import {
   onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
-const CFG_KEY='live_ledger_firebase_config_v5';
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCHrFvDfWRbfHF2mU30f0ck4yAMccK3JA0",
+  authDomain: "live-customer-ledger.firebaseapp.com",
+  projectId: "live-customer-ledger",
+  appId: "1:103677921961:web:cf0a7385d30f89c7d737b8"
+};
 let app=null,auth=null,db=null,unsubscribe=null,currentUser=null,suppressSnapshot=false;
 const $=id=>document.getElementById(id);
 
@@ -21,30 +26,9 @@ function msg(text,bad=false){
   const el=$('cloudMessage');if(!el)return;
   el.textContent=text;el.style.color=bad?'#dc2626':'#166534';
 }
-function readConfig(){
-  try{return JSON.parse(localStorage.getItem(CFG_KEY)||'{}')}catch{return {}}
-}
-function configFromForm(){
-  return {
-    apiKey:$('fbApiKey').value.trim(),
-    authDomain:$('fbAuthDomain').value.trim(),
-    projectId:$('fbProjectId').value.trim(),
-    appId:$('fbAppId').value.trim()
-  };
-}
-window.loadCloudForm=()=>{
-  const c=readConfig();
-  $('fbApiKey').value=c.apiKey||'';
-  $('fbAuthDomain').value=c.authDomain||'';
-  $('fbProjectId').value=c.projectId||'';
-  $('fbAppId').value=c.appId||'';
-};
-async function initFirebase(config){
-  if(app){
-    try{if(unsubscribe)unsubscribe(); await deleteApp(app)}catch{}
-    app=auth=db=null;
-  }
-  app=initializeApp(config,'ledger-'+Date.now());
+async function initFirebase(){
+  if(app) return;
+  app=initializeApp(FIREBASE_CONFIG);
   auth=getAuth(app); db=getFirestore(app);
   onAuthStateChanged(auth, async user=>{
     currentUser=user||null;
@@ -67,12 +51,8 @@ async function initFirebase(config){
     }
   });
 }
-function validConfig(c){return c.apiKey&&c.authDomain&&c.projectId&&c.appId}
 async function ensureConfig(){
-  const c=configFromForm();
-  if(!validConfig(c)) throw new Error('请完整填写 Firebase 配置');
-  localStorage.setItem(CFG_KEY,JSON.stringify(c));
-  await initFirebase(c);
+  await initFirebase();
 }
 function billsCol(){return collection(db,'users',currentUser.uid,'bills')}
 async function fetchRemote(){
@@ -160,10 +140,5 @@ window.firebaseManualSync=async()=>{
   }catch(e){alert('同步失败：'+(e.message||e))}
 };
 
-// Auto-load saved config. Firebase Auth will restore prior login session automatically.
-const saved=readConfig();
-if(validConfig(saved)){
-  initFirebase(saved).catch(()=>setState('☁️ 云端配置异常','warn'));
-}else{
-  setState('☁️ 未连接云端','warn');
-}
+// Initialize the built-in Firebase connection. Auth restores prior login automatically.
+initFirebase().catch(()=>setState('☁️ 云端连接异常','warn'));
