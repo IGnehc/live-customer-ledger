@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2563eb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="直播账本">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>直播客户账本 V2</title>
+<style>
+:root{--bg:#f4f6fa;--card:#fff;--text:#172033;--muted:#70798b;--line:#e7eaf0;--blue:#2563eb;--red:#dc2626;--green:#16a34a;--orange:#d97706}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+.app{max-width:1200px;margin:auto;padding:16px}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+h1{font-size:25px;margin:0}.hint{font-size:13px;color:var(--muted);margin-top:4px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.stat,.card{background:#fff;border:1px solid var(--line);border-radius:15px;box-shadow:0 2px 8px rgba(20,30,50,.035)}
+.stat{padding:15px}.stat small{color:var(--muted)}.stat strong{display:block;font-size:23px;margin-top:5px}.red{color:var(--red)}.green{color:var(--green)}
+.layout{display:grid;grid-template-columns:360px 1fr;gap:14px}.card{padding:15px}h2{font-size:17px;margin:0 0 12px}
+label{display:block;font-size:12px;color:#596174;margin:9px 0 5px}input,select,textarea,button{font:inherit}
+input,select,textarea{width:100%;padding:10px;border:1px solid #d5dae3;border-radius:9px;background:#fff}textarea{min-height:58px;resize:vertical}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}.btn{border:0;border-radius:9px;padding:10px 12px;font-weight:650;cursor:pointer}
+.primary{background:var(--blue);color:#fff}.full{width:100%;margin-top:12px}.soft{background:#eef2ff;color:#3730a3}.danger{background:#fee2e2;color:#991b1b}.ok{background:#dcfce7;color:#166534}
+.customers{margin-top:15px;border-top:1px solid var(--line);padding-top:12px}.cust{padding:10px 8px;border-bottom:1px dashed var(--line);display:flex;justify-content:space-between;cursor:pointer;border-radius:8px}.cust:hover{background:#f7f9fc}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.toolbar input,.toolbar select{width:auto;min-width:135px}
+.tablewrap{overflow:auto;border:1px solid var(--line);border-radius:10px;max-height:580px}table{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap}
+th,td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:#fafbfc;color:var(--muted);position:sticky;top:0}
+.badge{font-size:11px;padding:3px 7px;border-radius:99px;font-weight:700}.unpaid{background:#fee2e2;color:#991b1b}.partial{background:#fef3c7;color:#92400e}.paid{background:#dcfce7;color:#166534}
+.mini{border:0;border-radius:7px;padding:6px 8px;margin:1px;cursor:pointer;font-size:12px}
+#customerPage{display:none}.back{margin-bottom:12px}.customerHead{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:12px}
+.bigName{font-size:25px;font-weight:800}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:14px}.sum{background:#f8fafc;border:1px solid var(--line);padding:12px;border-radius:11px}.sum small{color:var(--muted)}.sum strong{display:block;font-size:19px;margin-top:4px}
+.empty{color:var(--muted);padding:14px;text-align:center}
+@media(max-width:850px){.layout{grid-template-columns:1fr}.stats,.summary{grid-template-columns:1fr 1fr}.app{padding:10px}}
+@media(max-width:500px){h1{font-size:21px}.stat strong{font-size:19px}.two{grid-template-columns:1fr}.toolbar input,.toolbar select,.toolbar button{width:100%}}
+</style>
+</head>
+<body>
+<div class="app">
+<div id="mainPage">
+ <div class="top"><div><h1>📒 直播客户账本</h1><div class="hint">中国客户 · 人民币记账 · 数据保存在本机浏览器</div></div></div>
+ <div class="stats">
+  <div class="stat"><small>累计消费</small><strong id="sTotal">¥0.00</strong></div>
+  <div class="stat"><small>当前未收</small><strong class="red" id="sDue">¥0.00</strong></div>
+  <div class="stat"><small>已收/抵扣</small><strong id="sPaid">¥0.00</strong></div>
+  <div class="stat"><small>客户人数</small><strong id="sCustomers">0</strong></div>
+ </div>
+ <div class="layout">
+  <div class="card">
+   <h2>新增消费记录</h2>
+   <label>客户名称 / 直播ID</label><input id="customer" list="names" placeholder="输入客户名"><datalist id="names"></datalist>
+   <div class="two"><div><label>日期</label><input type="date" id="date"></div><div><label>系列</label><select id="series"><option>高达</option><option>OP17</option><option>OP16</option><option>OP15</option><option>OP14</option><option>OP13</option><option>EB04</option><option>EB03</option><option>其他</option></select></div></div>
+   <div class="two"><div><label>种类</label><select id="type"><option>盒</option><option>散包</option><option>原膜</option><option>垃圾袋</option><option>切口</option><option>其他</option></select></div><div><label>数量</label><input type="number" id="qty" min="0" step="1" placeholder="例如 24"></div></div>
+   <div class="two"><div><label>单价（人民币）</label><input type="number" id="price" min="0" step="0.01" placeholder="例如 30"></div><div><label>金额</label><input id="preview" disabled value="¥0.00"></div></div>
+   <label>备注</label><textarea id="note" placeholder="例如：等直播结束统一付款"></textarea>
+   <button class="btn primary full" onclick="addBill()">＋ 添加到客户账单</button>
+   <div class="customers"><h2>客户账单</h2><div id="customerList"></div></div>
+  </div>
+  <div class="card">
+   <h2>全部记录</h2>
+   <div class="toolbar"><input id="search" placeholder="搜索客户" oninput="renderMain()"><select id="filter" onchange="renderMain()"><option value="">全部状态</option><option value="unpaid">未付款</option><option value="partial">部分付款</option><option value="paid">已付款</option></select><button class="btn soft" onclick="exportCSV()">导出CSV</button><button class="btn soft" onclick="backup()">备份数据</button></div>
+   <div class="tablewrap"><table><thead><tr><th>日期</th><th>客户</th><th>商品</th><th>消费</th><th>已付款</th><th>买取抵扣</th><th>还需付款</th><th>状态</th><th>操作</th></tr></thead><tbody id="tbody"></tbody></table></div>
+  </div>
+ </div>
+</div>
+
+<div id="customerPage">
+ <button class="btn soft back" onclick="backMain()">← 返回全部客户</button>
+ <div class="card">
+  <div class="customerHead"><div><div class="bigName" id="cpName"></div><div class="hint">客户独立账单 · 所有金额为人民币</div></div><button class="btn ok" onclick="settleCustomer()">一键结清</button></div>
+  <div class="summary"><div class="sum"><small>总消费</small><strong id="cpTotal"></strong></div><div class="sum"><small>已转账</small><strong id="cpPaid"></strong></div><div class="sum"><small>买取抵扣</small><strong id="cpBuy"></strong></div><div class="sum"><small>当前欠款</small><strong class="red" id="cpDue"></strong></div></div>
+  <div class="toolbar"><button class="btn ok" onclick="customerPayment()">＋ 记录客户转账</button><button class="btn soft" onclick="customerBuyback()">＋ 记录买取抵扣</button></div>
+  <div class="tablewrap"><table><thead><tr><th>日期</th><th>内容</th><th>数量</th><th>单价</th><th>消费金额</th><th>已付款</th><th>买取抵扣</th><th>剩余</th><th>备注</th><th>操作</th></tr></thead><tbody id="cpBody"></tbody></table></div>
+ </div>
+</div>
+</div>
+<script>
+const KEY='live_customer_bills_v2_cny';
+let bills=JSON.parse(localStorage.getItem(KEY)||'[]'), activeCustomer='';
+const $=id=>document.getElementById(id);
+$('date').value=new Date().toISOString().slice(0,10);
+const money=n=>'¥'+Number(n||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
+const due=b=>Math.max(0,Number(b.total||0)-Number(b.paid||0)-Number(b.buyback||0));
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function js(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
+function save(){localStorage.setItem(KEY,JSON.stringify(bills));renderMain();if(activeCustomer)renderCustomer()}
+function preview(){ $('preview').value=money(Number($('qty').value||0)*Number($('price').value||0)) }
+$('qty').oninput=preview;$('price').oninput=preview;
+
+function addBill(){
+ let customer=$('customer').value.trim(),qty=Number($('qty').value||0),price=Number($('price').value||0);
+ if(!customer)return alert('请输入客户名称');
+ if(!$('date').value)return alert('请选择日期');
+ if(qty<=0)return alert('请输入数量');
+ bills.unshift({id:Date.now(),date:$('date').value,customer,series:$('series').value,type:$('type').value,qty,price,total:qty*price,paid:0,buyback:0,note:$('note').value.trim()});
+ $('qty').value='';$('price').value='';$('note').value='';preview();save();
+}
+function status(b){let d=due(b);return d<=0?'paid':((Number(b.paid||0)+Number(b.buyback||0))>0?'partial':'unpaid')}
+function statusText(s){return s==='paid'?'已付款':s==='partial'?'部分付款':'未付款'}
+function removeBill(id){if(confirm('确定删除这条记录吗？')){bills=bills.filter(b=>b.id!==id);save()}}
+function payBill(id){
+ let b=bills.find(x=>x.id===id),d=due(b);if(!b)return;
+ let v=prompt('本条账单还需付款 '+money(d)+'\n请输入本次收到的人民币金额：',d.toFixed(2));if(v===null)return;v=Number(v);
+ if(isNaN(v)||v<0)return alert('金额不正确');b.paid=Number(b.paid||0)+v;save();
+}
+function buyBill(id){
+ let b=bills.find(x=>x.id===id);if(!b)return;
+ let v=prompt('请输入这条账单的买取抵扣金额（人民币）：',Number(b.buyback||0).toFixed(2));if(v===null)return;v=Number(v);
+ if(isNaN(v)||v<0)return alert('金额不正确');b.buyback=v;save();
+}
+function renderMain(){
+ let q=$('search').value.trim().toLowerCase(),f=$('filter').value;
+ let rows=bills.filter(b=>(!q||b.customer.toLowerCase().includes(q))&&(!f||status(b)===f));
+ $('tbody').innerHTML=rows.length?rows.map(b=>`<tr><td>${b.date}</td><td><b style="cursor:pointer;color:#2563eb" onclick="openCustomer('${js(b.customer)}')">${esc(b.customer)}</b></td><td>${esc(b.series)} ${esc(b.type)} × ${b.qty}</td><td>${money(b.total)}</td><td>${money(b.paid)}</td><td>${money(b.buyback)}</td><td class="${due(b)>0?'red':'green'}"><b>${money(due(b))}</b></td><td><span class="badge ${status(b)}">${statusText(status(b))}</span></td><td>${due(b)>0?`<button class="mini ok" onclick="payBill(${b.id})">收款</button>`:''}<button class="mini soft" onclick="buyBill(${b.id})">买取</button><button class="mini danger" onclick="removeBill(${b.id})">删除</button></td></tr>`).join(''):`<tr><td colspan="9" class="empty">暂无记录</td></tr>`;
+ let map={},total=0,paid=0;
+ bills.forEach(b=>{total+=Number(b.total);paid+=Number(b.paid||0)+Number(b.buyback||0);if(!map[b.customer])map[b.customer]={due:0,total:0};map[b.customer].due+=due(b);map[b.customer].total+=Number(b.total)});
+ $('sTotal').textContent=money(total);$('sDue').textContent=money(bills.reduce((a,b)=>a+due(b),0));$('sPaid').textContent=money(paid);$('sCustomers').textContent=Object.keys(map).length;
+ $('customerList').innerHTML=Object.keys(map).length?Object.entries(map).sort((a,b)=>b[1].due-a[1].due).map(([n,v])=>`<div class="cust" onclick="openCustomer('${js(n)}')"><span><b>${esc(n)}</b><br><small style="color:#70798b">累计 ${money(v.total)}</small></span><span class="${v.due>0?'red':'green'}"><b>${v.due>0?'欠 '+money(v.due):'已结清'}</b></span></div>`).join(''):`<div class="empty">还没有客户</div>`;
+ $('names').innerHTML=Object.keys(map).map(n=>`<option value="${esc(n)}">`).join('');
+}
+function openCustomer(name){activeCustomer=name;$('mainPage').style.display='none';$('customerPage').style.display='block';renderCustomer();window.scrollTo(0,0)}
+function backMain(){activeCustomer='';$('customerPage').style.display='none';$('mainPage').style.display='block';renderMain()}
+function customerBills(){return bills.filter(b=>b.customer===activeCustomer)}
+function renderCustomer(){
+ let bs=customerBills(),total=bs.reduce((a,b)=>a+Number(b.total),0),paid=bs.reduce((a,b)=>a+Number(b.paid||0),0),buy=bs.reduce((a,b)=>a+Number(b.buyback||0),0),d=bs.reduce((a,b)=>a+due(b),0);
+ $('cpName').textContent=activeCustomer;$('cpTotal').textContent=money(total);$('cpPaid').textContent=money(paid);$('cpBuy').textContent=money(buy);$('cpDue').textContent=money(d);
+ $('cpBody').innerHTML=bs.length?bs.map(b=>`<tr><td>${b.date}</td><td>${esc(b.series)} ${esc(b.type)}</td><td>${b.qty}</td><td>${money(b.price)}</td><td>${money(b.total)}</td><td>${money(b.paid)}</td><td>${money(b.buyback)}</td><td class="${due(b)>0?'red':'green'}"><b>${money(due(b))}</b></td><td>${esc(b.note||'')}</td><td>${due(b)>0?`<button class="mini ok" onclick="payBill(${b.id})">收款</button>`:''}<button class="mini soft" onclick="buyBill(${b.id})">买取</button><button class="mini danger" onclick="removeBill(${b.id})">删除</button></td></tr>`).join(''):'<tr><td colspan="10" class="empty">暂无记录</td></tr>';
+}
+function customerPayment(){
+ let bs=customerBills(),d=bs.reduce((a,b)=>a+due(b),0);if(d<=0)return alert('这个客户目前没有欠款');
+ let v=prompt(activeCustomer+' 当前欠款 '+money(d)+'\n请输入本次转账金额：',d.toFixed(2));if(v===null)return;v=Number(v);if(isNaN(v)||v<=0)return alert('金额不正确');
+ for(let b of bs.slice().reverse()){let r=due(b);if(r<=0)continue;let use=Math.min(v,r);b.paid=Number(b.paid||0)+use;v-=use;if(v<=0)break}save();
+}
+function customerBuyback(){
+ let bs=customerBills(),d=bs.reduce((a,b)=>a+due(b),0);if(d<=0)return alert('这个客户目前没有欠款');
+ let v=prompt(activeCustomer+' 当前欠款 '+money(d)+'\n请输入本次买取店抵扣金额：');if(v===null)return;v=Number(v);if(isNaN(v)||v<=0)return alert('金额不正确');
+ for(let b of bs.slice().reverse()){let r=due(b);if(r<=0)continue;let use=Math.min(v,r);b.buyback=Number(b.buyback||0)+use;v-=use;if(v<=0)break}save();
+}
+function settleCustomer(){
+ let bs=customerBills(),d=bs.reduce((a,b)=>a+due(b),0);if(d<=0)return alert('已经结清');
+ if(!confirm(`确认已收到 ${activeCustomer} 的全部欠款 ${money(d)} 吗？`))return;
+ bs.forEach(b=>{let r=due(b);if(r>0)b.paid=Number(b.paid||0)+r});save();
+}
+function download(content,name,type){let blob=new Blob([content],{type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
+function exportCSV(){let h=['日期','客户','系列','种类','数量','单价(CNY)','消费金额','已付款','买取抵扣','剩余欠款','状态','备注'];let r=bills.map(b=>[b.date,b.customer,b.series,b.type,b.qty,b.price,b.total,b.paid||0,b.buyback||0,due(b),statusText(status(b)),b.note||'']);let csv=[h,...r].map(x=>x.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');download('\ufeff'+csv,'直播客户账单_CNY.csv','text/csv;charset=utf-8')}
+function backup(){download(JSON.stringify(bills,null,2),'直播客户账本_V2_备份.json','application/json')}
+renderMain();
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
