@@ -1,4 +1,4 @@
-const CACHE='live-ledger-v7';
+const CACHE='live-ledger-v8';
 const STATIC=['./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 
 self.addEventListener('install',event=>{

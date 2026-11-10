@@ -1,11 +1,11 @@
 
-import { initializeApp, getApps, deleteApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {
   getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   signOut, onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
-  getFirestore, collection, doc, getDocs, setDoc, deleteDoc,
+  getFirestore, collection, doc, getDocs, writeBatch,
   onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
@@ -15,7 +15,7 @@ const FIREBASE_CONFIG = {
   projectId: "live-customer-ledger",
   appId: "1:103677921961:web:cf0a7385d30f89c7d737b8"
 };
-let app=null,auth=null,db=null,unsubscribe=null,currentUser=null,suppressSnapshot=false;
+let app=null,auth=null,db=null,unsubscribe=null,currentUser=null,writeQueue=Promise.resolve();
 const $=id=>document.getElementById(id);
 
 function setState(text,mode='warn'){
@@ -38,9 +38,14 @@ async function initFirebase(){
       $('cloudSyncBtn').style.display='';
       $('cloudLogoutBtn').style.display='';
       window.cloudReady=true;
-      await initialMergeAndSync();
-      subscribeRealtime();
-      closeCloudModal();
+      try{
+        await initialMergeAndSync();
+        if(currentUser?.uid!==user.uid)return;
+        subscribeRealtime();
+        closeCloudModal();
+      }catch(error){
+        if(currentUser?.uid===user.uid)setState('☁️ 同步失败 · 可点立即同步重试','warn');
+      }
     }else{
       setState('☁️ 未登录','warn');
       $('cloudLoginBtn').style.display='';
@@ -68,39 +73,52 @@ function mergeById(local,remote){
   });
   return [...m.values()].sort((a,b)=>Number(b.id)-Number(a.id));
 }
-async function pushAll(localBills,deletedIds=[]){
-  if(!currentUser||!db)return;
-  const deletes=(deletedIds||[]).map(async id=>{
-    await deleteDoc(doc(db,'users',currentUser.uid,'bills',String(id)));
-    return String(id);
+function pushAll(localBills,deletedIds=[]){
+  if(!currentUser||!db)return Promise.resolve();
+  const uid=currentUser.uid;
+  const deleted=new Set(deletedIds.map(String));
+  const writes=localBills.filter(b=>!deleted.has(String(b.id))).map(b=>({
+    id:String(b.id),data:structuredClone(b)
+  }));
+  const changes=[...Array.from(deleted,id=>({id})),...writes];
+  const pending=writeQueue.catch(()=>{}).then(async()=>{
+    if(currentUser?.uid!==uid||!changes.length)return;
+    for(let start=0;start<changes.length;start+=450){
+      const batch=writeBatch(db);
+      const chunk=changes.slice(start,start+450);
+      for(const {id,data} of chunk){
+        const ref=doc(db,'users',uid,'bills',id);
+        if(data)batch.set(ref,data,{merge:true});
+        else batch.delete(ref);
+      }
+      await batch.commit();
+      if(currentUser?.uid!==uid)return;
+      window.clearDeletedBillIds?.(chunk.filter(change=>!change.data).map(change=>change.id));
+    }
   });
-  const done=await Promise.all(deletes);
-  if(done.length) window.clearDeletedBillIds?.(done);
-
-  for(const b of (localBills||[])){
-    const payload={...b,updatedAt:Number(b.updatedAt||Date.now())};
-    await setDoc(doc(db,'users',currentUser.uid,'bills',String(b.id)),payload,{merge:true});
-  }
+  writeQueue=pending;
+  return pending.catch(error=>{
+    if(currentUser?.uid===uid)setState('☁️ 同步失败 · 可点立即同步重试','warn');
+    throw error;
+  });
 }
 window.cloudPushAll=pushAll;
-window.cloudDeleteOne=async id=>{
-  if(currentUser&&db) await deleteDoc(doc(db,'users',currentUser.uid,'bills',String(id)));
-};
 async function initialMergeAndSync(){
   setState('☁️ 正在同步…','warn');
-  const local=window.getLedgerBills?.()||[];
+  const uid=currentUser.uid;
   const remote=await fetchRemote();
+  if(currentUser?.uid!==uid)return;
+  const local=window.getLedgerBills?.()||[];
   const deleted=window.getDeletedBillIds?.()||[];
   const deletedSet=new Set(deleted.map(String));
   const merged=mergeById(local,remote).filter(b=>!deletedSet.has(String(b.id)));
   window.replaceLedgerBills?.(merged);
   await pushAll(merged,deleted);
-  setState('☁️ 已同步 · '+currentUser.email,'online');
+  if(currentUser?.uid===uid)setState('☁️ 已同步 · '+currentUser.email,'online');
 }
 function subscribeRealtime(){
   if(unsubscribe)unsubscribe();
   unsubscribe=onSnapshot(billsCol(),snap=>{
-    if(suppressSnapshot)return;
     const remote=snap.docs.map(d=>d.data());
     const local=window.getLedgerBills?.()||[];
     const deletedSet=new Set((window.getDeletedBillIds?.()||[]).map(String));
@@ -136,6 +154,7 @@ window.firebaseManualSync=async()=>{
   try{
     if(!currentUser)return alert('请先登录');
     await initialMergeAndSync();
+    subscribeRealtime();
     alert('同步完成');
   }catch(e){alert('同步失败：'+(e.message||e))}
 };
