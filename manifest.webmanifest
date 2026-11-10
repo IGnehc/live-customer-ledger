@@ -1,11 +1,12 @@
 {
-  "name": "卡牌收货卖货库存",
-  "short_name": "卡牌库存",
+  "name": "直播客户账本 V6",
+  "short_name": "直播账本",
+  "description": "支持人民币、单位计价、客户独立账单与 Firebase 多设备云同步",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#f4f6fa",
-  "theme_color": "#111827",
+  "theme_color": "#2563eb",
   "icons": [
     {
       "src": "icon-192.png",
