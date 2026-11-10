@@ -73,7 +73,7 @@ dialog.ledgerDialog::backdrop{background:rgba(15,23,42,.46)}
 <div class="app">
 <div id="mainPage">
  <div class="top">
-   <div><h1>📒 直播客户账本</h1><div class="hint">中国客户 · 人民币记账 · 本地保存 + 云端同步 · <b style="color:#2563eb">V8 买取明细版</b></div></div>
+   <div><h1>📒 直播客户账本</h1><div class="hint">中国客户 · 人民币记账 · 本地保存 + 云端同步 · <b style="color:#2563eb">V9 客户总额抵扣版</b></div></div>
    <div class="cloudbar">
      <span class="cloudstate warn" id="cloudState">☁️ 未连接云端</span>
      <button class="btn soft" id="cloudLoginBtn" onclick="openCloudModal()">云同步 / 登录</button>
@@ -101,8 +101,8 @@ dialog.ledgerDialog::backdrop{background:rgba(15,23,42,.46)}
   </div>
   <div class="card">
    <h2>全部记录</h2>
-   <div class="toolbar"><input id="search" placeholder="搜索客户" oninput="renderMain()"><select id="filter" onchange="renderMain()"><option value="">全部状态</option><option value="unpaid">未付款</option><option value="partial">部分付款</option><option value="paid">已付款</option></select><button class="btn soft" onclick="exportCSV()">导出CSV</button><button class="btn soft" onclick="backup()">备份数据</button></div>
-   <div class="tablewrap"><table><thead><tr><th>日期</th><th>客户</th><th>商品</th><th>消费</th><th>已付款</th><th>买取抵扣</th><th>还需付款</th><th>状态</th><th>操作</th></tr></thead><tbody id="tbody"></tbody></table></div>
+   <div class="toolbar"><input id="search" placeholder="搜索客户" oninput="renderMain()"><select id="filter" onchange="renderMain()"><option value="">全部状态</option><option value="unpaid">未付款</option><option value="partial">部分付款</option><option value="paid">已付款</option></select><button class="btn soft" onclick="exportCSV()">导出消费CSV</button><button class="btn soft" onclick="backup()">备份数据</button></div>
+   <div class="tablewrap"><table><thead><tr><th>日期</th><th>客户</th><th>商品</th><th>消费</th><th>已付款</th><th>旧版行抵扣</th><th>行剩余</th><th>状态</th><th>操作</th></tr></thead><tbody id="tbody"></tbody></table></div>
   </div>
  </div>
 </div>
@@ -112,9 +112,12 @@ dialog.ledgerDialog::backdrop{background:rgba(15,23,42,.46)}
  <div class="card">
   <div class="customerHead"><div><div class="bigName" id="cpName"></div><div class="hint">客户独立账单 · 所有金额为人民币</div></div><button class="btn ok" onclick="settleCustomer()">一键结清</button></div>
   <div class="summary"><div class="sum"><small>总消费</small><strong id="cpTotal"></strong></div><div class="sum"><small>已转账</small><strong id="cpPaid"></strong></div><div class="sum"><small>买取抵扣</small><strong id="cpBuy"></strong></div><div class="sum"><small>当前欠款</small><strong class="red" id="cpDue"></strong></div></div>
+  <p id="cpCredit" class="hint" hidden></p>
+  <p class="hint">客户欠款 = 总消费 − 已转账 − 买取抵扣。新买取直接扣客户总额，行剩余仅供核对消费。</p>
   <div class="toolbar"><button class="btn ok" onclick="customerPayment()">＋ 记录客户转账</button><button class="btn soft" onclick="openBuyDialog()">＋ 记录买取抵扣</button><button class="btn soft" onclick="openReceipt()">客户对账单</button></div>
-  <div class="tablewrap"><table><thead><tr><th>日期</th><th>内容</th><th>数量</th><th>单价</th><th>消费金额</th><th>已付款</th><th>买取抵扣</th><th>剩余</th><th>备注</th><th>操作</th></tr></thead><tbody id="cpBody"></tbody></table></div>
   <section class="history"><h2>买取明细</h2><div id="buyHistory"></div></section>
+  <h2 style="margin-top:18px">消费明细</h2>
+  <div class="tablewrap"><table><thead><tr><th>日期</th><th>内容</th><th>数量</th><th>单价</th><th>消费金额</th><th>已付款</th><th>旧版行抵扣</th><th>行剩余</th><th>备注</th><th>操作</th></tr></thead><tbody id="cpBody"></tbody></table></div>
  </div>
 </div>
 </div>
@@ -192,21 +195,43 @@ const defaultSeries=['高达','OP17','OP16','OP15','OP14','OP13','EB04','EB03','
 let customSeries=JSON.parse(localStorage.getItem(SERIES_KEY)||'[]');
 let seriesTarget, editingBill, buyDraft;
 const cents=value=>Math.round(Number(value||0)*100);
+const directBuybacks=b=>Array.isArray(b.customerBuybacks)?b.customerBuybacks:[];
 const buyParts=b=>Array.isArray(b.buybacks)?b.buybacks:[];
 const legacyCents=b=>Math.max(0,cents(b.buyback)-buyParts(b).reduce((sum,part)=>sum+cents(part.amount),0));
 const getBill=id=>bills.find(b=>String(b.id)===String(id));
-function localDate(){
-  const now=new Date();
+function localDate(at=Date.now()){
+  const now=new Date(at);
   return new Date(now.getTime()-now.getTimezoneOffset()*60000).toISOString().slice(0,10);
 }
 $('date').value=localDate();
 const money=n=>'¥'+Number(n||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const due=b=>Math.max(0,cents(b.total)-cents(b.paid)-cents(b.buyback))/100;
+function customerTotals(rows){
+ const totals={total:0,paid:0,buy:0};
+ for(const b of rows){
+   totals.total+=cents(b.total);
+   totals.paid+=cents(b.paid);
+   totals.buy+=cents(b.buyback)+directBuybacks(b).reduce((sum,record)=>sum+cents(record.amount),0);
+ }
+ const net=totals.total-totals.paid-totals.buy;
+ return {...totals,due:Math.max(0,net),credit:Math.max(0,-net)};
+}
+function stampBill(b){
+ if(legacyCents(b)>0&&b.legacyBuybackUpdatedAt==null)b.legacyBuybackUpdatedAt=b.updatedAt;
+ b.updatedAt=Math.max(Date.now(),Number(b.updatedAt)+1);
+}
+function transferBuybackHost(bill,target){
+ if(!directBuybacks(bill).length)return [];
+ target.customerBuybacks=[...directBuybacks(target),...directBuybacks(bill)];
+ bill.customerBuybacks=[];
+ stampBill(target);
+ return [target];
+}
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function save(changedBills){
+function save(changedBills,deletions=changedBills.length?[]:deletedBillIds){
   localStorage.setItem(KEY,JSON.stringify(bills));
   renderMain();if(activeCustomer)renderCustomer();
-  if(window.cloudReady && window.cloudPushAll) window.cloudPushAll(changedBills,changedBills.length?[]:deletedBillIds).catch(()=>{});
+  if(window.cloudReady && window.cloudPushAll) window.cloudPushAll(changedBills,deletions).catch(()=>{});
 }
 function calcTotal(qty,unit,price,priceMode){
   qty=Number(qty||0);price=Number(price||0);
@@ -238,73 +263,93 @@ function removeBill(id){
   const bill=getBill(id);
   if(!bill)return;
   if(cents(bill.buyback)>0)return alert('这张账单有买取记录。请先在客户账单的买取明细中处理抵扣。');
-  if(confirm('确定删除这条记录吗？')){
+  const target=bills.find(b=>b!==bill&&b.customer===bill.customer);
+  if(!target&&directBuybacks(bill).length)return alert('这是该客户最后一张消费账单，请先处理客户的买取记录。');
+  if(confirm('确定删除这条消费记录吗？')){
+    const changed=transferBuybackHost(bill,target);
     if(!deletedBillIds.includes(String(id))) deletedBillIds.push(String(id));
     localStorage.setItem(DELETED_KEY,JSON.stringify(deletedBillIds));
     bills=bills.filter(b=>b!==bill);
-    save([]);
+    save(changed,[String(id)]);
   }
 }
 function payBill(id){
  const b=getBill(id);
  if(!b)return;
- const remaining=due(b);
- const value=prompt('本条账单还需付款 '+money(remaining)+'\n请输入本次收到的人民币金额：',remaining.toFixed(2));
+ const customerDue=customerTotals(bills.filter(row=>row.customer===b.customer)).due;
+ const limit=Math.min(customerDue,cents(due(b)));
+ if(limit<=0)return alert('该客户或账单已经结清');
+ const value=prompt('本条最多可登记收款 '+money(limit/100)+'\n请输入本次收到的人民币金额：',(limit/100).toFixed(2));
  if(value===null)return;
- const amount=Number(value);
- if(!Number.isFinite(amount)||amount<=0)return alert('金额不正确');
- b.paid=(cents(b.paid)+cents(amount))/100;
- b.updatedAt=Date.now();
+ const amount=cents(value);
+ if(!Number.isSafeInteger(amount)||amount<=0||amount>limit)return alert('收款金额超出当前欠款或格式有误');
+ b.paid=(cents(b.paid)+amount)/100;
+ stampBill(b);
  save([b]);
 }
-function billActions(b){
+function billActions(b,customerDue){
  const id=esc(b.id);
- return `${due(b)>0?`<button class="mini ok" data-id="${id}" onclick="payBill(this.dataset.id)">收款</button>`:''}
- <button class="mini soft" data-id="${id}" onclick="openBuyDialog(this.dataset.id)">买取</button>
+ return `${customerDue>0&&due(b)>0?`<button class="mini ok" data-id="${id}" onclick="payBill(this.dataset.id)">收款</button>`:''}
  <button class="mini soft" data-id="${id}" onclick="openEditBill(this.dataset.id)">编辑</button>
  <button class="mini danger" data-id="${id}" onclick="removeBill(this.dataset.id)">删除</button>`;
 }
 function renderMain(){
  updateSeries();
  let q=$('search').value.trim().toLowerCase(),f=$('filter').value;
+ const groups=Object.create(null);
+ for(const b of bills)(groups[b.customer]??=[]).push(b);
+ const map=Object.fromEntries(Object.entries(groups).map(([name,rows])=>[name,customerTotals(rows)]));
  let rows=bills.filter(b=>(!q||b.customer.toLowerCase().includes(q))&&(!f||status(b)===f));
- $('tbody').innerHTML=rows.length?rows.map(b=>`<tr><td>${esc(b.date)}</td><td><b style="cursor:pointer;color:#2563eb" data-customer="${esc(b.customer)}" onclick="openCustomer(this.dataset.customer)">${esc(b.customer)}</b></td><td>${esc(b.series)} ${esc(b.type)} × ${esc(b.qty)}${esc(b.unit||'个')}</td><td>${money(b.total)}</td><td>${money(b.paid)}</td><td>${money(b.buyback)}</td><td class="${due(b)>0?'red':'green'}"><b>${money(due(b))}</b></td><td><span class="badge ${status(b)}">${statusText(status(b))}</span></td><td>${billActions(b)}</td></tr>`).join(''):`<tr><td colspan="9" class="empty">暂无记录</td></tr>`;
- let map=Object.create(null),total=0,paid=0;
- bills.forEach(b=>{total+=Number(b.total);paid+=Number(b.paid||0)+Number(b.buyback||0);if(!map[b.customer])map[b.customer]={due:0,total:0};map[b.customer].due+=due(b);map[b.customer].total+=Number(b.total)});
- $('sTotal').textContent=money(total);$('sDue').textContent=money(bills.reduce((a,b)=>a+due(b),0));$('sPaid').textContent=money(paid);$('sCustomers').textContent=Object.keys(map).length;
- $('customerList').innerHTML=Object.keys(map).length?Object.entries(map).sort((a,b)=>b[1].due-a[1].due).map(([n,v])=>`<div class="cust" data-customer="${esc(n)}" onclick="openCustomer(this.dataset.customer)"><span><b>${esc(n)}</b><br><small style="color:#70798b">累计 ${money(v.total)}</small></span><span class="${v.due>0?'red':'green'}"><b>${v.due>0?'欠 '+money(v.due):'已结清'}</b></span></div>`).join(''):`<div class="empty">还没有客户</div>`;
+ $('tbody').innerHTML=rows.length?rows.map(b=>`<tr><td>${esc(b.date)}</td><td><b style="cursor:pointer;color:#2563eb" data-customer="${esc(b.customer)}" onclick="openCustomer(this.dataset.customer)">${esc(b.customer)}</b></td><td>${esc(b.series)} ${esc(b.type)} × ${esc(b.qty)}${esc(b.unit||'个')}</td><td>${money(b.total)}</td><td>${money(b.paid)}</td><td>${money(b.buyback)}</td><td class="${due(b)>0?'red':'green'}"><b>${money(due(b))}</b></td><td><span class="badge ${status(b)}">${statusText(status(b))}</span></td><td>${billActions(b,map[b.customer].due)}</td></tr>`).join(''):`<tr><td colspan="9" class="empty">暂无记录</td></tr>`;
+ const totals=Object.values(map);
+ $('sTotal').textContent=money(totals.reduce((sum,v)=>sum+v.total,0)/100);
+ $('sDue').textContent=money(totals.reduce((sum,v)=>sum+v.due,0)/100);
+ $('sPaid').textContent=money(totals.reduce((sum,v)=>sum+v.paid+v.buy,0)/100);
+ $('sCustomers').textContent=totals.length;
+ $('customerList').innerHTML=Object.keys(map).length?Object.entries(map).sort((a,b)=>b[1].due-a[1].due).map(([n,v])=>`<div class="cust" data-customer="${esc(n)}" onclick="openCustomer(this.dataset.customer)"><span><b>${esc(n)}</b><br><small style="color:#70798b">累计 ${money(v.total/100)}</small></span><span class="${v.due>0?'red':'green'}"><b>${v.due>0?'欠 '+money(v.due/100):v.credit?'余额 '+money(v.credit/100):'已结清'}</b></span></div>`).join(''):`<div class="empty">还没有客户</div>`;
  $('names').innerHTML=Object.keys(map).map(n=>`<option value="${esc(n)}">`).join('');
 }
 function openCustomer(name){activeCustomer=name;$('mainPage').style.display='none';$('customerPage').style.display='block';renderCustomer();window.scrollTo(0,0)}
 function backMain(){activeCustomer='';$('customerPage').style.display='none';$('mainPage').style.display='block';renderMain()}
 function customerBills(){return bills.filter(b=>b.customer===activeCustomer)}
 function renderCustomer(){
- let bs=customerBills(),total=bs.reduce((a,b)=>a+Number(b.total),0),paid=bs.reduce((a,b)=>a+Number(b.paid||0),0),buy=bs.reduce((a,b)=>a+Number(b.buyback||0),0),d=bs.reduce((a,b)=>a+due(b),0);
- $('cpName').textContent=activeCustomer;$('cpTotal').textContent=money(total);$('cpPaid').textContent=money(paid);$('cpBuy').textContent=money(buy);$('cpDue').textContent=money(d);
- $('cpBody').innerHTML=bs.length?bs.map(b=>`<tr><td>${esc(b.date)}</td><td>${esc(b.series)} ${esc(b.type)}</td><td>${esc(b.qty)}${esc(b.unit||'个')}</td><td>${money(b.price)}${b.priceMode==='pack'&&b.unit==='手'?'/包':'/'+esc(b.unit||'个')}</td><td>${money(b.total)}</td><td>${money(b.paid)}</td><td>${money(b.buyback)}</td><td class="${due(b)>0?'red':'green'}"><b>${money(due(b))}</b></td><td>${esc(b.note||'')}</td><td>${billActions(b)}</td></tr>`).join(''):'<tr><td colspan="10" class="empty">暂无记录</td></tr>';
+ const bs=customerBills(),{total,paid,buy,due:remaining,credit}=customerTotals(bs);
+ $('cpName').textContent=activeCustomer;
+ $('cpTotal').textContent=money(total/100);
+ $('cpPaid').textContent=money(paid/100);
+ $('cpBuy').textContent=money(buy/100);
+ $('cpDue').textContent=money(remaining/100);
+ $('cpCredit').hidden=!credit;
+ $('cpCredit').textContent='待抵扣余额 '+money(credit/100)+'，会抵扣之后的消费。';
+ $('cpBody').innerHTML=bs.length?bs.map(b=>`<tr><td>${esc(b.date)}</td><td>${esc(b.series)} ${esc(b.type)}</td><td>${esc(b.qty)}${esc(b.unit||'个')}</td><td>${money(b.price)}${b.priceMode==='pack'&&b.unit==='手'?'/包':'/'+esc(b.unit||'个')}</td><td>${money(b.total)}</td><td>${money(b.paid)}</td><td>${money(b.buyback)}</td><td class="${due(b)>0?'red':'green'}"><b>${money(due(b))}</b></td><td>${esc(b.note||'')}</td><td>${billActions(b,remaining)}</td></tr>`).join(''):'<tr><td colspan="10" class="empty">暂无记录</td></tr>';
  renderBuyHistory();
 }
-function customerPayment(){
- let bs=customerBills(),d=bs.reduce((a,b)=>a+due(b),0);if(d<=0)return alert('这个客户目前没有欠款');
- let v=prompt(activeCustomer+' 当前欠款 '+money(d)+'\n请输入本次转账金额：',d.toFixed(2));if(v===null)return;v=Number(v);if(!Number.isFinite(v)||v<=0)return alert('金额不正确');
- let remaining=cents(v);
+function applyCustomerPayment(remaining){
  const changed=[];
- for(const b of bs.slice().reverse()){
+ for(const b of customerBills().slice().reverse()){
    const amount=Math.min(remaining,cents(due(b)));
    if(amount<=0)continue;
    b.paid=(cents(b.paid)+amount)/100;
-   b.updatedAt=Date.now();
+   stampBill(b);
    changed.push(b);
    remaining-=amount;
+   if(!remaining)break;
  }
  save(changed);
 }
+function customerPayment(){
+ const remaining=customerTotals(customerBills()).due;
+ if(!remaining)return alert('这个客户目前没有欠款');
+ const value=prompt(activeCustomer+' 当前欠款 '+money(remaining/100)+'\n请输入本次转账金额：',(remaining/100).toFixed(2));
+ if(value===null)return;
+ const amount=cents(value);
+ if(!Number.isSafeInteger(amount)||amount<=0||amount>remaining)return alert('收款金额超出当前欠款或格式有误');
+ applyCustomerPayment(amount);
+}
 function settleCustomer(){
- let bs=customerBills(),d=bs.reduce((a,b)=>a+due(b),0);if(d<=0)return alert('已经结清');
- if(!confirm(`确认已收到 ${activeCustomer} 的全部欠款 ${money(d)} 吗？`))return;
- const changed=bs.filter(b=>due(b)>0);
- changed.forEach(b=>{b.paid=(cents(b.paid)+cents(due(b)))/100;b.updatedAt=Date.now()});
- save(changed);
+ const remaining=customerTotals(customerBills()).due;
+ if(!remaining)return alert('已经结清');
+ if(confirm(`确认已收到 ${activeCustomer} 的全部欠款 ${money(remaining/100)} 吗？`))applyCustomerPayment(remaining);
 }
 function setOptions(select, names, selected=select.value){
  if(selected&&!names.includes(selected))names=[...names,selected];
@@ -350,7 +395,7 @@ function openEditBill(id){
  for(const [id,value] of Object.entries({
    editCustomer:b.customer,editDate:b.date,editQty:b.qty,editPrice:b.price,editPaid:b.paid||0,editNote:b.note||''
  }))$(id).value=value??'';
- $('editCustomer').readOnly=cents(b.buyback)>0;
+ $('editCustomer').readOnly=cents(b.buyback)>0||Boolean(directBuybacks(b).length&&!bills.some(row=>row!==b&&row.customer===b.customer));
  for(const [source,target,value] of [
    ['series','editSeries',b.series],['type','editType',b.type],['unit','editUnit',b.unit||'个'],
    ['priceMode','editPriceMode',b.priceMode||'unit']
@@ -379,18 +424,24 @@ $('editBillForm').onsubmit=event=>{
  const total=editTotal();
  if(!Number.isFinite(total))return alert('消费金额过大');
  if(cents(paid)+cents(b.buyback)>cents(total)&&!confirm('修改后收款和抵扣合计将超过消费金额，确认保存？'))return;
+ const target=bills.find(row=>row!==b&&row.customer===b.customer);
+ if(customer!==b.customer&&(cents(b.buyback)>0||(!target&&directBuybacks(b).length)))return alert('请先处理这张账单关联的买取记录。');
+ const changed=customer===b.customer?[]:transferBuybackHost(b,target);
+ stampBill(b);
  Object.assign(b,{
    customer,date:$('editDate').value,series:$('editSeries').value,type:$('editType').value,
-   unit:$('editUnit').value,priceMode:$('editPriceMode').value,qty,price,total,paid,note:$('editNote').value.trim(),
-   updatedAt:Math.max(Date.now(),Number(b.updatedAt)+1)
+   unit:$('editUnit').value,priceMode:$('editPriceMode').value,qty,price,total,paid,note:$('editNote').value.trim()
  });
  $('editBillDialog').close();
- save([b]);
+ save([b,...changed]);
 };
 
 function buyHistory(customer){
  const events=new Map();
  for(const b of bills.filter(b=>b.customer===customer)){
+   for(const record of directBuybacks(b)){
+     events.set(record.id,{...record,amountCents:cents(record.amount),host:b,allocations:[]});
+   }
    for(const part of buyParts(b)){
      if(!events.has(part.id))events.set(part.id,{...part,amountCents:0,allocations:[]});
      const entry=events.get(part.id);
@@ -399,22 +450,26 @@ function buyHistory(customer){
    }
    const amount=legacyCents(b);
    if(amount>0){
-     const id='legacy-'+b.id;
-     events.set(id,{id,date:'',item:'',note:'',amountCents:amount,legacy:true,billId:String(b.id),
-       allocations:[{bill:b,amountCents:amount}]});
+     const at=Number(b.legacyBuybackUpdatedAt??b.updatedAt);
+     const id='legacy-'+(at||('bill-'+b.id));
+     if(!events.has(id))events.set(id,{id,date:'',item:'',note:'',amountCents:0,legacy:true,createdAt:at,allocations:[]});
+     const entry=events.get(id);
+     entry.amountCents+=amount;
+     entry.allocations.push({bill:b,amountCents:amount});
    }
  }
- return [...events.values()].sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||Number(b.createdAt||0)-Number(a.createdAt||0));
+ return [...events.values()].sort((a,b)=>
+   String(b.date||localDate(b.createdAt)).localeCompare(String(a.date||localDate(a.createdAt)))||
+   Number(b.createdAt||0)-Number(a.createdAt||0)
+ );
 }
 function buyEntryHtml(entry,withActions){
  const id=esc(entry.id);
- const allocations=entry.allocations.map(({bill,amountCents})=>
-   `${esc(bill.date)} · ${esc(bill.series)} ${esc(bill.type)} · ${money(amountCents/100)}`
- );
+ const at=entry.legacy&&entry.createdAt?new Date(entry.createdAt).toLocaleString('zh-CN',{hour12:false}):'';
  return `<article>
-  <strong>${esc(entry.date||'日期未记录')} · 抵扣 ${money(entry.amountCents/100)}</strong>
+  <strong>${esc(entry.date||'日期未记录')} · 买取 ${money(entry.amountCents/100)}</strong>
   <p>${esc(entry.item||(entry.legacy?'旧版累计抵扣':'买取抵扣'))}</p>
-  <p>${allocations.join('<br>')}</p>
+  ${withActions&&entry.legacy?`<p class="hint">旧账单最后更新 ${esc(at||'时间未记录')} · 共 ${entry.allocations.length} 张</p>`:''}
   ${entry.note?`<p>备注 ${esc(entry.note)}</p>`:''}
   ${withActions?`<div class="toolbar"><button class="mini soft" data-id="${id}" onclick="editBuyback(this.dataset.id)">编辑</button><button class="mini danger" data-id="${id}" onclick="deleteBuyback(this.dataset.id)">删除抵扣</button></div>`:''}
  </article>`;
@@ -425,32 +480,28 @@ function renderBuyHistory(){
 }
 function openReceipt(){
  const entries=buyHistory(activeCustomer);
+ const {credit}=customerTotals(customerBills());
  $('receiptBody').innerHTML=`<h2 id="receiptTitle">${esc(activeCustomer)} · 客户对账单</h2>
  <p>出具日期 ${localDate()} · 金额为人民币</p>
  <p>总消费 ${$('cpTotal').textContent}　已收款 ${$('cpPaid').textContent}</p>
  <p>买取抵扣 ${$('cpBuy').textContent}　当前欠款 ${$('cpDue').textContent}</p>
+ ${credit?`<p>待抵扣余额 ${money(credit/100)}</p>`:''}
  <h3>消费明细</h3>
  ${customerBills().map(b=>`<p>${esc(b.date)} · ${esc(b.series)} ${esc(b.type)} × ${esc(b.qty)}${esc(b.unit||'个')} · ${money(b.total)}</p>`).join('')||'<p>暂无消费记录</p>'}
  <section class="history"><h3>买取明细</h3>${entries.map(entry=>buyEntryHtml(entry,false)).join('')||'<p>暂无买取记录</p>'}</section>`;
  $('receiptDialog').showModal();
 }
 function buybackRevision(entry){
- return JSON.stringify(entry&&[entry.date,entry.item,entry.note,
-   entry.allocations.map(line=>[line.bill.id,line.amountCents])]);
+ return JSON.stringify(entry&&[entry.date,entry.item,entry.note,entry.amountCents,
+   entry.allocations.map(line=>[line.bill.id,line.amountCents]).sort()]);
 }
-function openBuyDialog(billId=null,entry=null){
- const b=billId===null?null:getBill(billId);
- if(billId!==null&&!b)return;
- const customer=b?.customer||activeCustomer;
- if(!customer)return;
- buyDraft={customer,billId,entryId:entry?.id??null,revision:buybackRevision(entry)};
- const plan=buybackPlan(buyDraft,entry);
- const available=plan.reduce((sum,line)=>sum+line.capacity,0);
- if(!entry&&available<=0)return alert('当前没有可抵扣的欠款');
+function openBuyDialog(entry=null){
+ if(!customerBills().length)return alert('当前客户没有账单');
+ buyDraft={customer:activeCustomer,entryId:entry?.id??null,revision:buybackRevision(entry)};
  $('buyTitle').textContent=entry?'编辑买取记录':'新增买取记录';
- $('buyHelp').textContent=customer+' · 本次最多可抵扣 '+money(available/100);
+ $('buyHelp').textContent=activeCustomer+' · 整笔金额从客户总消费中抵扣';
  $('buyDate').value=entry?entry.date:localDate();
- $('buyDate').required=!entry||!entry.legacy&&Boolean(entry.date);
+ $('buyDate').required=!entry||Boolean(entry.date);
  $('buyAmount').value=entry?(entry.amountCents/100).toFixed(2):'';
  $('buyItem').value=entry?.item||'';
  $('buyNote').value=entry?.note||'';
@@ -458,46 +509,25 @@ function openBuyDialog(billId=null,entry=null){
 }
 function editBuyback(id){
  const entry=buyHistory(activeCustomer).find(entry=>entry.id===id);
- if(entry)openBuyDialog(entry.billId??null,entry);
+ if(entry)openBuyDialog(entry);
 }
-function buybackPlan(draft,entry){
- const previous=new Map((entry?.allocations||[]).map(line=>[line.bill,line.amountCents]));
- return bills.filter(b=>b.customer===draft.customer&&(draft.billId===null||String(b.id)===String(draft.billId)))
-   .slice().reverse().map(b=>{
-     const old=previous.get(b)||0;
-     const others=cents(b.buyback)-old;
-     const capacity=Math.max(old,cents(b.total)-cents(b.paid)-others);
-     return {b,old,capacity};
-   });
-}
-function applyBuyback(draft,entry,details,amount){
- const plan=buybackPlan(draft,entry);
- if(!Number.isSafeInteger(amount)||amount<0||amount>plan.reduce((sum,line)=>sum+line.capacity,0)){
-   alert('抵扣金额超过当前可用额度，请检查金额。');
-   return false;
+function updateBuyback(customer,entry,details){
+ const host=entry?.host||bills.find(b=>b.customer===customer);
+ if(!host)return false;
+ const changed=new Set((entry?.allocations||[]).map(line=>line.bill));
+ if(details||entry?.host)changed.add(host);
+ if(changed.size>450)return alert('这批旧记录超过单次更新上限，请保留备份后再处理。');
+ for(const {bill,amountCents} of entry?.allocations||[]){
+   stampBill(bill);
+   bill.buybacks=buyParts(bill).filter(part=>part.id!==entry.id);
+   bill.buyback=(cents(bill.buyback)-amountCents)/100;
  }
- const sameAmount=entry&&entry.amountCents===amount;
- let remaining=amount;
- const allocations=[];
- for(const {b,old,capacity} of plan){
-   const allocation=sameAmount?old:Math.min(remaining,capacity);
-   remaining-=allocation;
-   if(allocation||old)allocations.push({b,old,allocation});
+ if(details||entry?.host){
+   host.customerBuybacks=directBuybacks(host).filter(record=>record.id!==entry?.id);
+   if(details)host.customerBuybacks.push(details);
+   stampBill(host);
  }
- if(allocations.length>400){
-   alert('这笔买取涉及太多张账单，请分笔登记。');
-   return false;
- }
- const changed=[];
- for(const {b,old,allocation} of allocations){
-   const parts=buyParts(b).filter(part=>part.id!==entry?.id);
-   if(allocation)parts.push({...details,amount:allocation/100});
-   b.buybacks=parts;
-   b.buyback=(cents(b.buyback)-old+allocation)/100;
-   b.updatedAt=Math.max(Date.now(),Number(b.updatedAt)+1);
-   changed.push(b);
- }
- save(changed);
+ save([...changed]);
  return true;
 }
 $('buyForm').onsubmit=event=>{
@@ -508,24 +538,24 @@ $('buyForm').onsubmit=event=>{
    return alert('买取记录已更新，请重新打开。');
  }
  const amount=cents($('buyAmount').value);
- if(!Number.isSafeInteger(amount)||amount<=0)return alert('请输入有效抵扣金额');
+ if(!Number.isSafeInteger(amount)||amount<=0)return alert('请输入有效买取金额');
  const details={
-   id:entry&&!entry.legacy?entry.id:(globalThis.crypto?.randomUUID?.()||Date.now()+'-'+Math.random().toString(36).slice(2)),
-   date:$('buyDate').value,item:$('buyItem').value.trim(),note:$('buyNote').value.trim(),createdAt:entry?.createdAt||Date.now()
+   id:entry?.host?entry.id:(globalThis.crypto?.randomUUID?.()||Date.now()+'-'+Math.random().toString(36).slice(2)),
+   date:$('buyDate').value,item:$('buyItem').value.trim(),note:$('buyNote').value.trim(),
+   amount:amount/100,createdAt:entry?.createdAt||Date.now()
  };
- if(buyDraft.billId!==null)details.billId=String(buyDraft.billId);
- if(applyBuyback(buyDraft,entry,details,amount))$('buyDialog').close();
+ if(updateBuyback(buyDraft.customer,entry,details))$('buyDialog').close();
 };
 function deleteBuyback(id){
  const entry=buyHistory(activeCustomer).find(entry=>entry.id===id);
- if(entry&&confirm('删除这笔 '+money(entry.amountCents/100)+' 的买取抵扣？账单欠款将重新计算。')){
-   applyBuyback({customer:activeCustomer,billId:entry.billId??null},entry,null,0);
+ if(entry&&confirm('撤销这笔 '+money(entry.amountCents/100)+' 的买取抵扣？客户欠款将重新计算。')){
+   updateBuyback(activeCustomer,entry,null);
  }
 }
 
 function download(content,name,type){let blob=new Blob([content],{type}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
-function exportCSV(){let h=['日期','客户','系列','种类','数量','单位','计价方式','单价(CNY)','消费金额','已付款','买取抵扣','剩余欠款','状态','备注'];let r=bills.map(b=>[b.date,b.customer,b.series,b.type,b.qty,b.unit||'个',b.priceMode==='pack'?'按每包计价':'按当前单位计价',b.price,b.total,b.paid||0,b.buyback||0,due(b),statusText(status(b)),b.note||'']);let csv=[h,...r].map(x=>x.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');download('\ufeff'+csv,'直播客户账单_CNY.csv','text/csv;charset=utf-8')}
-function backup(){download(JSON.stringify({bills,customSeries,deletedBillIds},null,2),'直播客户账本_V8_备份.json','application/json')}
+function exportCSV(){let h=['日期','客户','系列','种类','数量','单位','计价方式','单价(CNY)','消费金额','已付款','旧版行抵扣','行剩余','行状态','备注'];let r=bills.map(b=>[b.date,b.customer,b.series,b.type,b.qty,b.unit||'个',b.priceMode==='pack'?'按每包计价':'按当前单位计价',b.price,b.total,b.paid||0,b.buyback||0,due(b),statusText(status(b)),b.note||'']);let csv=[h,...r].map(x=>x.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');download('\ufeff'+csv,'直播客户账单_CNY.csv','text/csv;charset=utf-8')}
+function backup(){download(JSON.stringify({bills,customSeries,deletedBillIds},null,2),'直播客户账本_V9_备份.json','application/json')}
 
 window.getLedgerBills=()=>bills;
 window.getDeletedBillIds=()=>deletedBillIds;
@@ -549,10 +579,10 @@ function manualCloudSync(){ if(window.firebaseManualSync) window.firebaseManualS
 renderMain();
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./service-worker.js?v=8').then(reg=>reg.update()).catch(()=>{});
+    navigator.serviceWorker.register('./service-worker.js?v=9').then(reg=>reg.update()).catch(()=>{});
   });
 }
 </script>
-<script type="module" src="./cloud-sync.js?v=8"></script>
+<script type="module" src="./cloud-sync.js?v=9"></script>
 </body>
 </html>
